@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 
 	imageapi "github.com/openshift/origin/pkg/image/api"
@@ -23,6 +24,7 @@ func DeploymentToPodLogOptions(opts *DeploymentLogOptions) *kapi.PodLogOptions {
 		Timestamps:   opts.Timestamps,
 		TailLines:    opts.TailLines,
 		LimitBytes:   opts.LimitBytes,
+		Container:    opts.Container,
 	}
 }
 
@@ -32,7 +34,18 @@ func ScaleFromConfig(dc *DeploymentConfig) *extensions.Scale {
 		ObjectMeta: kapi.ObjectMeta{
 			Name:              dc.Name,
 			Namespace:         dc.Namespace,
+			UID:               dc.UID,
+			ResourceVersion:   dc.ResourceVersion,
 			CreationTimestamp: dc.CreationTimestamp,
+		},
+		Spec: extensions.ScaleSpec{
+			Replicas: dc.Spec.Replicas,
+		},
+		Status: extensions.ScaleStatus{
+			Replicas: dc.Status.Replicas,
+			Selector: &unversioned.LabelSelector{
+				MatchLabels: dc.Spec.Selector,
+			},
 		},
 	}
 }

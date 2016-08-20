@@ -18,7 +18,7 @@ import (
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/master/ports"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/crypto"
 
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
@@ -95,7 +95,7 @@ func NewCommandNodeConfig(commandName string, fullName string, out io.Writer) *c
 	flags.StringVar(&options.NodeClientCAFile, "node-client-certificate-authority", options.NodeClientCAFile, "The file containing signing authorities to use to verify requests to the node. If empty, all requests will be allowed.")
 	flags.StringVar(&options.APIServerURL, "master", options.APIServerURL, "The API server's URL.")
 	flags.StringSliceVar(&options.APIServerCAFiles, "certificate-authority", options.APIServerCAFiles, "Files containing signing authorities to use to verify the API server's serving certificate.")
-	flags.StringVar(&options.NetworkPluginName, "network-plugin", options.NetworkPluginName, "Name of the network plugin to hook to for pod networking.")
+	flags.StringVar(&options.NetworkPluginName, "network-plugin", options.NetworkPluginName, "Name of the network plugin to hook to for pod networking. Optional for OpenShift network plugin, node will auto detect network plugin configured by OpenShift master.")
 
 	// autocompletion hints
 	cmd.MarkFlagFilename("node-dir")
@@ -160,7 +160,7 @@ func (o CreateNodeConfigOptions) Validate(args []string) error {
 		return fmt.Errorf("--certificate-authority must be a valid certificate file")
 	} else {
 		for _, caFile := range o.APIServerCAFiles {
-			if _, err := util.CertPoolFromFile(caFile); err != nil {
+			if _, err := crypto.CertPoolFromFile(caFile); err != nil {
 				return fmt.Errorf("--certificate-authority must be a valid certificate file: %v", err)
 			}
 		}
@@ -250,7 +250,7 @@ func (o CreateNodeConfigOptions) CreateNodeFolder() error {
 		return err
 	}
 	if o.UseTLS() {
-		if err := o.MakeServerCert(serverCertFile, serverKeyFile); err != nil {
+		if err := o.MakeAndWriteServerCert(serverCertFile, serverKeyFile); err != nil {
 			return err
 		}
 		if o.UseNodeClientCA() {
@@ -309,7 +309,7 @@ func (o CreateNodeConfigOptions) MakeClientCert(clientCertFile, clientKeyFile st
 	return nil
 }
 
-func (o CreateNodeConfigOptions) MakeServerCert(serverCertFile, serverKeyFile string) error {
+func (o CreateNodeConfigOptions) MakeAndWriteServerCert(serverCertFile, serverKeyFile string) error {
 	if o.IsCreateServerCertificate() {
 		nodeServerCertOptions := CreateServerCertOptions{
 			SignerCertOptions: o.SignerCertOptions,
@@ -403,6 +403,8 @@ func (o CreateNodeConfigOptions) MakeNodeConfig(serverCertFile, serverKeyFile, n
 		NetworkConfig: configapi.NodeNetworkConfig{
 			NetworkPluginName: o.NetworkPluginName,
 		},
+
+		EnableUnidling: true,
 	}
 
 	if o.UseTLS() {
@@ -432,14 +434,18 @@ func (o CreateNodeConfigOptions) MakeNodeConfig(serverCertFile, serverKeyFile, n
 	}
 
 	// Roundtrip the config to v1 and back to ensure proper defaults are set.
-	ext, err := configapi.Scheme.ConvertToVersion(config, latestconfigapi.Version.String())
+	ext, err := configapi.Scheme.ConvertToVersion(config, latestconfigapi.Version)
 	if err != nil {
 		return err
 	}
-	internal, err := configapi.Scheme.ConvertToVersion(ext, configapi.SchemeGroupVersion.String())
+	internal, err := configapi.Scheme.ConvertToVersion(ext, configapi.SchemeGroupVersion)
 	if err != nil {
 		return err
 	}
+	config = internal.(*configapi.NodeConfig)
+
+	// For new configurations, use protobuf.
+	configapi.SetProtobufClientDefaults(config.MasterClientConnectionOverrides)
 
 	content, err := latestconfigapi.WriteYAML(internal)
 	if err != nil {

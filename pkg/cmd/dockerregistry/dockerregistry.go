@@ -25,10 +25,14 @@ import (
 
 	_ "github.com/docker/distribution/registry/auth/htpasswd"
 	_ "github.com/docker/distribution/registry/auth/token"
+
+	_ "github.com/docker/distribution/registry/proxy"
 	_ "github.com/docker/distribution/registry/storage/driver/azure"
 	_ "github.com/docker/distribution/registry/storage/driver/filesystem"
+	_ "github.com/docker/distribution/registry/storage/driver/gcs"
+	_ "github.com/docker/distribution/registry/storage/driver/inmemory"
 	_ "github.com/docker/distribution/registry/storage/driver/middleware/cloudfront"
-	_ "github.com/docker/distribution/registry/storage/driver/s3"
+	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	_ "github.com/docker/distribution/registry/storage/driver/swift"
 
 	"github.com/openshift/origin/pkg/cmd/server/crypto"
@@ -53,6 +57,19 @@ func Execute(configFile io.Reader) {
 	uuid.Loggerf = context.GetLogger(ctx).Warnf
 
 	app := handlers.NewApp(ctx, config)
+
+	// Add a token handling endpoint
+	if options, usingOpenShiftAuth := config.Auth[server.OpenShiftAuth]; usingOpenShiftAuth {
+		tokenRealm, err := server.TokenRealm(options)
+		if err != nil {
+			log.Fatalf("error setting up token auth: %s", err)
+		}
+		err = app.NewRoute().Methods("GET").PathPrefix(tokenRealm.Path).Handler(server.NewTokenHandler(ctx, server.DefaultRegistryClient)).GetError()
+		if err != nil {
+			log.Fatalf("error setting up token endpoint at %q: %v", tokenRealm.Path, err)
+		}
+		log.Debugf("configured token endpoint at %q", tokenRealm.String())
+	}
 
 	// TODO add https scheme
 	adminRouter := app.NewRoute().PathPrefix("/admin/").Subrouter()

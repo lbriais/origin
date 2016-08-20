@@ -4,12 +4,11 @@ import (
 	"testing"
 
 	"github.com/ghodss/yaml"
-	"speter.net/go/exp/math/dec/inf"
 
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 
 	internal "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/api/latest"
@@ -36,15 +35,16 @@ dnsDomain: ""
 dnsIP: ""
 dockerConfig:
   execHandlerName: ""
+enableUnidling: false
 imageConfig:
   format: ""
   latest: false
 iptablesSyncPeriod: ""
 kind: NodeConfig
+masterClientConnectionOverrides: null
 masterKubeConfig: ""
 networkConfig:
   mtu: 0
-  networkPluginName: ""
 nodeIP: ""
 nodeName: ""
 podManifestConfig:
@@ -82,6 +82,7 @@ apiLevels: null
 apiVersion: v1
 assetConfig:
   extensionDevelopment: false
+  extensionProperties: null
   extensionScripts: null
   extensionStylesheets: null
   extensions:
@@ -102,6 +103,11 @@ assetConfig:
     maxRequestsInFlight: 0
     namedCertificates: null
     requestTimeoutSeconds: 0
+auditConfig:
+  enabled: false
+controllerConfig:
+  serviceServingCert:
+    signer: null
 controllerLeaseTTL: 0
 controllers: ""
 corsAllowedOrigins: null
@@ -146,6 +152,12 @@ imagePolicyConfig:
   maxImagesBulkImportedPerRepository: 0
   maxScheduledImageImportsPerMinute: 0
   scheduledImageImportMinimumIntervalSeconds: 0
+jenkinsPipelineConfig:
+  enabled: null
+  parameters: null
+  serviceName: ""
+  templateName: ""
+  templateNamespace: ""
 kind: MasterConfig
 kubeletClientInfo:
   ca: ""
@@ -173,18 +185,22 @@ kubernetesMasterConfig:
   proxyClientInfo:
     certFile: ""
     keyFile: ""
+  schedulerArguments: null
   schedulerConfigFile: ""
   servicesNodePortRange: ""
   servicesSubnet: ""
   staticNodeNames: null
 masterClients:
+  externalKubernetesClientConnectionOverrides: null
   externalKubernetesKubeConfig: ""
+  openshiftLoopbackClientConnectionOverrides: null
   openshiftLoopbackKubeConfig: ""
 masterPublicURL: ""
 networkConfig:
   clusterNetworkCIDR: ""
   externalIPNetworkCIDRs: null
   hostSubnetLength: 0
+  ingressIPNetworkCIDR: ""
   networkPluginName: ""
   serviceNetworkCIDR: ""
 oauthConfig:
@@ -192,6 +208,7 @@ oauthConfig:
   assetPublicURL: ""
   grantConfig:
     method: ""
+    serviceAccountMethod: ""
   identityProviders:
   - challenge: false
     login: false
@@ -473,7 +490,7 @@ func TestSerializeNodeConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(serializedConfig) != expectedSerializedNodeConfig {
-		t.Errorf("Diff:\n-------------\n%s", util.StringDiff(string(serializedConfig), expectedSerializedNodeConfig))
+		t.Errorf("Diff:\n-------------\n%s", diff.StringDiff(string(serializedConfig), expectedSerializedNodeConfig))
 	}
 }
 
@@ -520,7 +537,7 @@ volumeConfig:
   localQuota:
     perFSGroup: 200000
 `,
-			expected: "200000",
+			expected: "200k",
 		},
 		"Kb quota": {
 			config: `
@@ -529,7 +546,7 @@ volumeConfig:
   localQuota:
     perFSGroup: 200Ki
 `,
-			expected: "204800",
+			expected: "200Ki",
 		},
 		"Mb quota": {
 			config: `
@@ -538,7 +555,7 @@ volumeConfig:
   localQuota:
     perFSGroup: 512Mi
 `,
-			expected: "536870912",
+			expected: "512Mi",
 		},
 		"Gb quota": {
 			config: `
@@ -547,7 +564,7 @@ volumeConfig:
   localQuota:
     perFSGroup: 2Gi
 `,
-			expected: "2147483648",
+			expected: "2Gi",
 		},
 		"Tb quota": {
 			config: `
@@ -556,7 +573,7 @@ volumeConfig:
   localQuota:
     perFSGroup: 2Ti
 `,
-			expected: "2199023255552",
+			expected: "2Ti",
 		},
 		// This is invalid config, would be caught by validation but just
 		// testing it parses ok:
@@ -567,7 +584,7 @@ volumeConfig:
   localQuota:
     perFSGroup: -512Mi
 `,
-			expected: "-536870912",
+			expected: "-512Mi",
 		},
 		"zero quota": {
 			config: `
@@ -587,19 +604,16 @@ volumeConfig:
 			t.Errorf("Error reading yaml: %s", err.Error())
 		}
 		if test.expected == "" && nodeConfig.VolumeConfig.LocalQuota.PerFSGroup != nil {
-			t.Errorf("Expected empty quota but got: %s", *nodeConfig.VolumeConfig.LocalQuota.PerFSGroup)
+			t.Errorf("Expected empty quota but got: %v", nodeConfig.VolumeConfig.LocalQuota.PerFSGroup)
 		}
 		if test.expected != "" {
 			if nodeConfig.VolumeConfig.LocalQuota.PerFSGroup == nil {
 				t.Errorf("Expected quota: %s, got: nil", test.expected)
 			} else {
-				amount := nodeConfig.VolumeConfig.LocalQuota.PerFSGroup.Amount
+				amount := nodeConfig.VolumeConfig.LocalQuota.PerFSGroup
 				t.Logf("%s", amount.String())
-				rounded := new(inf.Dec)
-				rounded.Round(amount, 0, inf.RoundUp)
-				t.Logf("%s", rounded.String())
-				if test.expected != rounded.String() {
-					t.Errorf("Expected quota: %s, got: %s", test.expected, rounded.String())
+				if test.expected != amount.String() {
+					t.Errorf("Expected quota: %s, got: %s", test.expected, amount.String())
 				}
 			}
 		}
@@ -676,7 +690,7 @@ func TestMasterConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(serializedConfig) != expectedSerializedMasterConfig {
-		t.Errorf("Diff:\n-------------\n%s", util.StringDiff(string(serializedConfig), expectedSerializedMasterConfig))
+		t.Errorf("Diff:\n-------------\n%s", diff.StringDiff(string(serializedConfig), expectedSerializedMasterConfig))
 	}
 
 }

@@ -11,6 +11,7 @@ var map_ClusterNetwork = map[string]string{
 	"network":          "Network is a CIDR string to specify the global overlay network's L3 space",
 	"hostsubnetlength": "HostSubnetLength is the number of bits to allocate to each host's subnet e.g. 8 would mean a /24 network on the host",
 	"serviceNetwork":   "ServiceNetwork is the CIDR string to specify the service network",
+	"pluginName":       "PluginName is the name of the network plugin",
 }
 
 func (ClusterNetwork) SwaggerDoc() map[string]string {
@@ -25,6 +26,54 @@ var map_ClusterNetworkList = map[string]string{
 
 func (ClusterNetworkList) SwaggerDoc() map[string]string {
 	return map_ClusterNetworkList
+}
+
+var map_EgressNetworkPolicy = map[string]string{
+	"":         "EgressNetworkPolicy describes the current egress network policy for a Namespace. When using the 'redhat/openshift-ovs-multitenant' network plugin, traffic from a pod to an IP address outside the cluster will be checked against each EgressNetworkPolicyRule in the pod's namespace's EgressNetworkPolicy, in order. If no rule matches (or no EgressNetworkPolicy is present) then the traffic will be allowed by default.",
+	"metadata": "metadata for EgressNetworkPolicy",
+	"spec":     "spec is the specification of the current egress network policy",
+}
+
+func (EgressNetworkPolicy) SwaggerDoc() map[string]string {
+	return map_EgressNetworkPolicy
+}
+
+var map_EgressNetworkPolicyList = map[string]string{
+	"":         "EgressNetworkPolicyList is a collection of EgressNetworkPolicy",
+	"metadata": "metadata for EgressNetworkPolicyList",
+	"items":    "items is the list of policies",
+}
+
+func (EgressNetworkPolicyList) SwaggerDoc() map[string]string {
+	return map_EgressNetworkPolicyList
+}
+
+var map_EgressNetworkPolicyPeer = map[string]string{
+	"":             "EgressNetworkPolicyPeer specifies a target to apply egress network policy to",
+	"cidrSelector": "cidrSelector is the CIDR range to allow/deny traffic to",
+}
+
+func (EgressNetworkPolicyPeer) SwaggerDoc() map[string]string {
+	return map_EgressNetworkPolicyPeer
+}
+
+var map_EgressNetworkPolicyRule = map[string]string{
+	"":     "EgressNetworkPolicyRule contains a single egress network policy rule",
+	"type": "type marks this as an \"Allow\" or \"Deny\" rule",
+	"to":   "to is the target that traffic is allowed/denied to",
+}
+
+func (EgressNetworkPolicyRule) SwaggerDoc() map[string]string {
+	return map_EgressNetworkPolicyRule
+}
+
+var map_EgressNetworkPolicySpec = map[string]string{
+	"":       "EgressNetworkPolicySpec provides a list of policies on outgoing network traffic",
+	"egress": "egress contains the list of egress policy rules",
+}
+
+func (EgressNetworkPolicySpec) SwaggerDoc() map[string]string {
+	return map_EgressNetworkPolicySpec
 }
 
 var map_HostSubnet = map[string]string{
